@@ -1,7 +1,7 @@
 manifestVersion: subsquid.io/v0.1
 namespace: squid
 
-name: balances-batch-dzlzv
+name: calamari-balances
 description: |-
   The very first squid from manifest
 tags:
