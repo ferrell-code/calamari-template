@@ -1,11 +1,20 @@
 import {lookupArchive} from "@subsquid/archive-registry"
 import * as ss58 from "@subsquid/ss58"
-import {BatchContext, BatchProcessorItem, SubstrateBatchProcessor, BatchProcessorEventItem, SubstrateBlock, decodeHex} from "@subsquid/substrate-processor"
+import {BatchContext, BatchProcessorItem, SubstrateBatchProcessor, BatchProcessorEventItem, SubstrateBlock, decodeHex, toHex} from "@subsquid/substrate-processor"
 import {Store, TypeormDatabase} from "@subsquid/typeorm-store"
-import {In} from "typeorm"
 import {Account, ChainState} from "./model"
-import {BalancesTransferEvent} from "./types/generated/events"
-import { Block, ChainContext} from "./types/generated/support"
+import {
+    BalancesBalanceSetEvent,
+    BalancesDepositEvent,
+    BalancesEndowedEvent,
+    BalancesReservedEvent,
+    BalancesReserveRepatriatedEvent,
+    BalancesSlashedEvent,
+    BalancesUnreservedEvent,
+    BalancesWithdrawEvent,
+    BalancesTransferEvent
+} from "./types/generated/events"
+import { Block, ChainContext, Event} from "./types/generated/support"
 import { SystemAccountStorage } from "./types/generated/storage"
 import { saveCurrentChainState, saveRegularChainState } from "./chainState"
 
@@ -72,7 +81,9 @@ async function processBalances(ctx: Context): Promise<void> {
 
     for (const block of ctx.blocks) {
         for (const item of block.items) {
-            processBalancesEventItem(ctx, item, accountIdsHex)
+            if (item.kind == 'event') {
+                processBalancesEventItem(ctx, item, accountIdsHex)
+            }
         }
 
         if (lastStateTimestamp == null) {
@@ -145,6 +156,114 @@ function processBalancesEventItem(ctx: Context, item: EventItem, accountIdsHex: 
             accountIdsHex.add(accounts[1])
             break
         }
+    }
+}
+
+function getBalanceSetAccount(ctx: ChainContext, event: Event) {
+    const data = new BalancesBalanceSetEvent(ctx, event)
+
+    if (data.isV1) {
+        return toHex(data.asV1[0])
+    } else if (data.isV3110) {
+        return toHex(data.asV3110.who)
+    } else {
+        throw new UnknownVersionError(data.constructor.name)
+    }
+}
+
+function getTransferAccounts(ctx: ChainContext, event: Event) {
+    const data = new BalancesTransferEvent(ctx, event)
+
+    if (data.isV1) {
+        return [toHex(data.asV1[0]), toHex(data.asV1[1])]
+    } else if (data.isV3110) {
+        return [toHex(data.asV3110.from), toHex(data.asV3110.to)]
+    } else {
+        throw new UnknownVersionError(data.constructor.name)
+    }
+}
+
+function getEndowedAccount(ctx: ChainContext, event: Event) {
+    const data = new BalancesEndowedEvent(ctx, event)
+
+    if (data.isV1) {
+        return toHex(data.asV1[0])
+    } else if (data.isV3110) {
+        return toHex(data.asV3110.account)
+    } else {
+        throw new UnknownVersionError(data.constructor.name)
+    }
+}
+
+function getDepositAccount(ctx: ChainContext, event: Event) {
+    const data = new BalancesDepositEvent(ctx, event)
+
+    if (data.isV1) {
+        return toHex(data.asV1[0])
+    } else if (data.isV3110) {
+        return toHex(data.asV3110.who)
+    } else {
+        throw new UnknownVersionError(data.constructor.name)
+    }
+}
+
+function getReservedAccount(ctx: ChainContext, event: Event) {
+    const data = new BalancesReservedEvent(ctx, event)
+
+    if (data.isV1) {
+        return toHex(data.asV1[0])
+    } else if (data.isV3110) {
+        return toHex(data.asV3110.who)
+    } else {
+        throw new UnknownVersionError(data.constructor.name)
+    }
+}
+
+function getUnreservedAccount(ctx: ChainContext, event: Event) {
+    const data = new BalancesUnreservedEvent(ctx, event)
+
+    if (data.isV1) {
+        return toHex(data.asV1[0])
+    } else if (data.isV3110) {
+        return toHex(data.asV3110.who)
+    } else {
+        throw new UnknownVersionError(data.constructor.name)
+    }
+}
+
+function getWithdrawAccount(ctx: ChainContext, event: Event) {
+    const data = new BalancesWithdrawEvent(ctx, event)
+
+    if (data.isV3100) {
+        return toHex(data.asV3100[0])
+    } else if (data.isV3110) {
+        return toHex(data.asV3110.who)
+    } else {
+        throw new UnknownVersionError(data.constructor.name)
+    }
+}
+
+function getSlashedAccount(ctx: ChainContext, event: Event) {
+    const data = new BalancesSlashedEvent(ctx, event)
+
+    if (data.isV3100) {
+        return toHex(data.asV3100[0])
+    } else if (data.isV3110) {
+        return toHex(data.asV3110.who)
+    } else {
+        throw new UnknownVersionError(data.constructor.name)
+    }
+}
+
+function getReserveRepatriatedAccounts(ctx: ChainContext, event: Event) {
+    const data = new BalancesReserveRepatriatedEvent(ctx, event)
+
+    if (data.isV1) {
+        return [toHex(data.asV1[0]), toHex(data.asV1[1])]
+    } else if (data.isV3110) {
+        return [toHex(data.asV3110.from), toHex(data.asV3110.to)]
+    } else {
+        throw new UnknownVersionError(data.constructor.name)
     }
 }
 
