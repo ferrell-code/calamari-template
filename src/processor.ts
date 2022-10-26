@@ -16,7 +16,7 @@ import {
 } from "./types/generated/events"
 import { Block, ChainContext, Event} from "./types/generated/support"
 import { SystemAccountStorage } from "./types/generated/storage"
-import { saveCurrentChainState, saveRegularChainState } from "./chainState"
+import { saveRegularChainState } from "./chainState"
 
 
 const processor = new SubstrateBatchProcessor()
@@ -24,7 +24,7 @@ const processor = new SubstrateBatchProcessor()
     .setDataSource({
         // Lookup archive by the network name in the Subsquid registry
         archive: lookupArchive("calamari", {release: "FireSquid"}),
-        chain: 'wss://ws.calamari.systems/',
+        chain: 'wss://salad.calamari.systems',
     })
     .setBlockRange({from: 0})
     .addEvent('Balances.Endowed', {
@@ -63,15 +63,15 @@ type Context = BatchContext<Store, Item>
 
 processor.run(new TypeormDatabase(), processBalances)
 
-// 12 hours
-const SAVE_PERIOD = 12 * 60 * 60 * 1000
-let lastStateTimestamp: number | undefined
+// number of blocks
+const SAVE_PERIOD = 10000
+let lastStateBlock: number | undefined
 
 async function getLastChainState(store: Store) {
     return await store.get(ChainState, {
         where: {},
         order: {
-            timestamp: 'DESC',
+            blockNumber: 'DESC',
         },
     })
 }
@@ -86,25 +86,20 @@ async function processBalances(ctx: Context): Promise<void> {
             }
         }
 
-        if (lastStateTimestamp == null) {
-            lastStateTimestamp = (await getLastChainState(ctx.store))?.timestamp.getTime() || 0
+        if (lastStateBlock == null) {
+            lastStateBlock = (await getLastChainState(ctx.store))?.blockNumber || 0
         }
-        if (block.header.timestamp - lastStateTimestamp >= SAVE_PERIOD) {
-            const accountIdsU8 = [...accountIdsHex].map((id) => decodeHex(id))
-
-            await saveAccounts(ctx, block.header, accountIdsU8)
+        if (block.header.height - lastStateBlock >= SAVE_PERIOD) {
             await saveRegularChainState(ctx, block.header)
 
-            lastStateTimestamp = block.header.timestamp
-            accountIdsHex.clear()
+            lastStateBlock = block.header.height
         }
     }
 
-    const block = ctx.blocks[ctx.blocks.length - 1]
-    const accountIdsU8 = [...accountIdsHex].map((id) => decodeHex(id))
+    //const block = ctx.blocks[ctx.blocks.length - 1]
+    //const accountIdsU8 = [...accountIdsHex].map((id) => decodeHex(id))
 
-    await saveAccounts(ctx, block.header, accountIdsU8)
-    await saveCurrentChainState(ctx, block.header)
+    //await saveAccounts(ctx, block.header, accountIdsU8)
 }
 
 function processBalancesEventItem(ctx: Context, item: EventItem, accountIdsHex: Set<string>) {
@@ -305,7 +300,6 @@ async function saveAccounts(ctx: Context, block: SubstrateBlock, accountIds: Uin
     ctx.log.child('accounts').info(`updated: ${accounts.size}, deleted: ${deletions.size}`)
 }
 
-
 interface Balance {
     free: bigint
     reserved: bigint
@@ -315,7 +309,7 @@ async function getBalances(
     ctx: ChainContext,
     block: Block,
     accounts: Uint8Array[]
-): Promise<(Balance | undefined)[] | undefined> {
+): Promise<Balance[] | undefined> {
     return (
         await getSystemAccountBalances(ctx, block, accounts)
     )
@@ -325,14 +319,13 @@ async function getSystemAccountBalances(ctx: ChainContext, block: Block, account
     const storage = new SystemAccountStorage(ctx, block)
     if (!storage.isExists) return undefined
 
-    const data = await ctx._chain.queryStorage(
-        block.hash,
-        'System',
-        'Account',
-        accounts.map((a) => [a])
-    )
-
-    return data.map((d) => ({ free: d.data.free, reserved: d.data.reserved }))
+    if (storage.isV1) {
+        const data = await storage.getManyAsV1(accounts)
+        return data.map((d) => ({ free: d.data.free, reserved: d.data.reserved }))
+    } else {
+        const data = await storage.getManyAsV3(accounts)
+        return data.map((d) => ({ free: d.data.free, reserved: d.data.reserved }))
+    }
 }
 
 

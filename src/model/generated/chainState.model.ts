@@ -11,7 +11,7 @@ export class ChainState {
   id!: string
 
   @Column_("numeric", {transformer: marshal.bigintTransformer, nullable: false})
-  tokenBalance!: bigint
+  totalIssuance!: bigint
 
   @Column_("int4", {nullable: false})
   tokenHolders!: number

@@ -8,7 +8,7 @@ type Account @entity {
 
 type ChainState @entity {
   id: ID!
-  tokenBalance: BigInt!
+  totalIssuance: BigInt!
   tokenHolders: Int!
   timestamp: DateTime! @index
   blockNumber: Int! @index
