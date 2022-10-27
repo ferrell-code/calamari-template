@@ -12,10 +12,6 @@
     "Balances.Withdraw",
     "Balances.Slashed"
   ],
-  "calls": [
-  ],
-  "storage": [
-    "System.Account",
-    "Balances.TotalIssuance"
-  ]
+  "calls": [],
+  "storage": ["System.Account", "Balances.TotalIssuance"]
 }
