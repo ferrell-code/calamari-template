@@ -2,7 +2,7 @@ import {lookupArchive} from "@subsquid/archive-registry"
 import * as ss58 from "@subsquid/ss58"
 import {BatchContext, BatchProcessorItem, SubstrateBatchProcessor, BatchProcessorEventItem, SubstrateBlock, decodeHex, toHex} from "@subsquid/substrate-processor"
 import {Store, TypeormDatabase} from "@subsquid/typeorm-store"
-import {Account, ChainState} from "./model"
+import {Account} from "./model"
 import {
     BalancesBalanceSetEvent,
     BalancesDepositEvent,
@@ -26,7 +26,8 @@ const processor = new SubstrateBatchProcessor()
         archive: lookupArchive("calamari", {release: "FireSquid"}),
         chain: 'wss://salad.calamari.systems',
     })
-    .setBlockRange({from: 0})
+    // Decoding fails at 275_910-275_940, due to metadata V13, tranfers are only from multisig upgrade of wasm runtime (Not super important)
+    .setBlockRange({from: 275_940})
     .addEvent('Balances.Endowed', {
         data: { event: { args: true } },
     } as const)
@@ -63,19 +64,6 @@ type Context = BatchContext<Store, Item>
 
 processor.run(new TypeormDatabase(), processBalances)
 
-// number of blocks
-const SAVE_PERIOD = 10000
-let lastStateBlock: number | undefined
-
-async function getLastChainState(store: Store) {
-    return await store.get(ChainState, {
-        where: {},
-        order: {
-            blockNumber: 'DESC',
-        },
-    })
-}
-
 async function processBalances(ctx: Context): Promise<void> {
     const accountIdsHex = new Set<string>()
 
@@ -85,21 +73,13 @@ async function processBalances(ctx: Context): Promise<void> {
                 processBalancesEventItem(ctx, item, accountIdsHex)
             }
         }
-
-        if (lastStateBlock == null) {
-            lastStateBlock = (await getLastChainState(ctx.store))?.blockNumber || 0
-        }
-        if (block.header.height - lastStateBlock >= SAVE_PERIOD) {
-            await saveRegularChainState(ctx, block.header)
-
-            lastStateBlock = block.header.height
-        }
     }
 
-    //const block = ctx.blocks[ctx.blocks.length - 1]
-    //const accountIdsU8 = [...accountIdsHex].map((id) => decodeHex(id))
+    const block = ctx.blocks[ctx.blocks.length - 1]
+    const accountIdsU8 = [...accountIdsHex].map((id) => decodeHex(id))
 
-    //await saveAccounts(ctx, block.header, accountIdsU8)
+    await saveRegularChainState(ctx, block.header)
+    await saveAccounts(ctx, block.header, accountIdsU8)
 }
 
 function processBalancesEventItem(ctx: Context, item: EventItem, accountIdsHex: Set<string>) {
